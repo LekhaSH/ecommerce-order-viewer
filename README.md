@@ -1,4 +1,5 @@
 eCommerce Order Viewer
+
 A simple web application to search for users, view their orders, and drill down into order items using a provided API.
 
 📌 Features
@@ -63,16 +64,6 @@ Each order has id, status, created_at, shipped_at, delivered_at, and num_of_item
 
 Each item has product_name, sku, brand, category, retail_price, and status.
 
-📷 Screenshot
-
-
-Example:
-
-User Search Page
-
-Order List
-
-Order Items Table
 
 🏆 Milestones Achieved
 Milestone 1: Setup environment, tools, and API connections.
