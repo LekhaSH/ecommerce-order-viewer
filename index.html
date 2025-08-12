@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>eCommerce Order Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    body { margin: 24px; }
+    h1 { margin: 0 0 12px; }
+    .row { display: grid; grid-template-columns: 1fr; gap: 24px; }
+    @media (min-width: 900px) { .row { grid-template-columns: 360px 1fr; } }
+
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; background: #fff; }
+    input[type="text"] { width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 6px; }
+    button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; background: #f7f7f7; cursor: pointer; }
+    button:hover { background: #eee; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #eee; text-align: left; }
+    tr:hover { background: #fafafa; }
+    .muted { color: #666; }
+    .small { font-size: 12px; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#f2f2f2; }
+    .list { list-style: none; padding: 0; margin: 0; }
+    .list li { padding: 8px 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+    .list li:hover { background: #fafafa; }
+    .empty { padding: 12px; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>eCommerce Order Viewer</h1>
+  <div class="row">
+    <!-- LEFT: search + users -->
+    <div class="card">
+      <label for="q" class="small muted">Search by name, email, city, or state</label>
+      <div style="display:flex; gap:8px; margin:8px 0 12px;">
+        <input id="q" type="text" placeholder="e.g., john, @gmail.com, Seattle, CA" />
+        <button id="btnSearch">Search</button>
+      </div>
+      <ul id="users" class="list"></ul>
+      <div id="usersEmpty" class="empty" style="display:none;">No users. Try a different query.</div>
+    </div>
+
+    <!-- RIGHT: orders + items -->
+    <div class="card">
+      <div id="crumbs" class="small muted" style="margin-bottom:8px;"></div>
+
+      <div id="ordersWrap">
+        <h3 style="margin-top:0;">Orders</h3>
+        <table id="ordersTbl">
+          <thead>
+            <tr><th>ID</th><th>Status</th><th>Created</th><th>Shipped</th><th>Delivered</th><th>Items</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div id="ordersEmpty" class="empty" style="display:none;">Select a user to view orders.</div>
+      </div>
+
+      <div id="itemsWrap" style="margin-top:20px;">
+        <h3 style="margin-top:0;">Order Items</h3>
+        <table id="itemsTbl">
+          <thead>
+            <tr><th>Product</th><th>SKU</th><th>Brand</th><th>Category</th><th class="small">Retail Price</th><th>Status</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div id="itemsEmpty" class="empty" style="display:none;">Select an order to view items.</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const API = 'http://localhost:5174';
+
+const els = {
+  q: document.getElementById('q'),
+  btnSearch: document.getElementById('btnSearch'),
+  users: document.getElementById('users'),
+  usersEmpty: document.getElementById('usersEmpty'),
+  ordersTblBody: document.querySelector('#ordersTbl tbody'),
+  ordersEmpty: document.getElementById('ordersEmpty'),
+  itemsTblBody: document.querySelector('#itemsTbl tbody'),
+  itemsEmpty: document.getElementById('itemsEmpty'),
+  crumbs: document.getElementById('crumbs'),
+};
+
+let currentUser = null;
+let currentOrder = null;
+
+function setCrumbs() {
+  const parts = [];
+  if (currentUser) parts.push(`${currentUser.first_name} ${currentUser.last_name} (${currentUser.email})`);
+  if (currentOrder) parts.push(`Order #${currentOrder.id}`);
+  els.crumbs.textContent = parts.join(' › ');
+}
+
+async function searchUsers() {
+  const q = els.q.value.trim();
+  const res = await fetch(`${API}/api/users?q=${encodeURIComponent(q)}`);
+  const users = await res.json();
+
+  els.users.innerHTML = '';
+  if (!users.length) {
+    els.usersEmpty.style.display = 'block';
+  } else {
+    els.usersEmpty.style.display = 'none';
+    for (const u of users) {
+      const li = document.createElement('li');
+      li.innerHTML = `<strong>${u.first_name} ${u.last_name}</strong> <span class="muted small">— ${u.email} — ${u.city || ''} ${u.state || ''}</span>`;
+      li.onclick = () => loadOrders(u);
+      els.users.appendChild(li);
+    }
+  }
+
+  // reset right side
+  currentUser = null;
+  currentOrder = null;
+  els.ordersTblBody.innerHTML = '';
+  els.itemsTblBody.innerHTML = '';
+  els.ordersEmpty.style.display = 'block';
+  els.itemsEmpty.style.display = 'block';
+  setCrumbs();
+}
+
+async function loadOrders(user) {
+  currentUser = user; currentOrder = null;
+  setCrumbs();
+  els.itemsTblBody.innerHTML = '';
+  els.itemsEmpty.style.display = 'block';
+
+  const res = await fetch(`${API}/api/users/${user.id}/orders`);
+  const orders = await res.json();
+  els.ordersTblBody.innerHTML = '';
+
+  if (!orders.length) {
+    els.ordersEmpty.style.display = 'block';
+    return;
+  }
+  els.ordersEmpty.style.display = 'none';
+
+  for (const o of orders) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><button class="pill" title="View items">#${o.id}</button></td>
+      <td>${o.status || ''}</td>
+      <td><span class="small">${o.created_at || ''}</span></td>
+      <td><span class="small">${o.shipped_at || ''}</span></td>
+      <td><span class="small">${o.delivered_at || ''}</span></td>
+      <td>${o.num_of_item ?? ''}</td>
+    `;
+    tr.onclick = () => loadItems(o);
+    els.ordersTblBody.appendChild(tr);
+  }
+}
+
+async function loadItems(order) {
+  currentOrder = order;
+  setCrumbs();
+  const res = await fetch(`${API}/api/orders/${order.id}/items`);
+  const items = await res.json();
+  els.itemsTblBody.innerHTML = '';
+
+  if (!items.length) {
+    els.itemsEmpty.style.display = 'block';
+    return;
+  }
+  els.itemsEmpty.style.display = 'none';
+
+  for (const it of items) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${it.product_name}</td>
+      <td class="small">${it.sku || ''}</td>
+      <td>${it.brand || ''}</td>
+      <td>${it.category || ''}</td>
+      <td>${it.retail_price ?? ''}</td>
+      <td>${it.status || ''}</td>
+    `;
+    els.itemsTblBody.appendChild(tr);
+  }
+}
+
+// events
+els.btnSearch.onclick = searchUsers;
+els.q.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') searchUsers();
+});
+
+// optional: run an empty search on load
+searchUsers();
+</script>
+</body>
+</html>
